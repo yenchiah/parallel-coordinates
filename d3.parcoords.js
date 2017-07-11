@@ -24,7 +24,8 @@ d3.parcoords = function(config) {
     hideAxis : [],
     flipAxes: [],
     animationTime: 1100, // How long it takes to flip the axis when you double click
-    rotateLabels: false
+    rotateLabels: false,
+    axisLabelOffset: {x: 0, y: 0}
   };
 
   extend(__, config);
@@ -42,7 +43,7 @@ d3.parcoords = function(config) {
     });
   }
 var pc = function(selection) {
-  selection = pc.selection = d3.select(selection);
+  selection = pc.selection = d3.select(selection).append("div").attr("class", "parcoords");
 
   __.width = selection[0][0].clientWidth;
   __.height = selection[0][0].clientHeight;
@@ -278,16 +279,16 @@ pc.autoscale = function() {
 
   // default styles, needs to be set when canvas width changes
   ctx.foreground.strokeStyle = __.color;
-  ctx.foreground.lineWidth = 1.4;
+  ctx.foreground.lineWidth = 1;
   ctx.foreground.globalCompositeOperation = __.composite;
   ctx.foreground.globalAlpha = __.alpha;
   ctx.foreground.scale(devicePixelRatio, devicePixelRatio);
   ctx.brushed.strokeStyle = __.brushedColor;
-  ctx.brushed.lineWidth = 1.4;
+  ctx.brushed.lineWidth = 1;
   ctx.brushed.globalCompositeOperation = __.composite;
   ctx.brushed.globalAlpha = __.alpha;
   ctx.brushed.scale(devicePixelRatio, devicePixelRatio);
-  ctx.highlight.lineWidth = 3;
+  ctx.highlight.lineWidth = 1.5;
   ctx.highlight.scale(devicePixelRatio, devicePixelRatio);
 
   return this;
@@ -557,7 +558,7 @@ pc.compute_real_centroids = function(row) {
 	}
 
 	return realCentroids;
-}
+};
 
 function compute_control_points(centroids) {
 
@@ -582,7 +583,9 @@ function compute_control_points(centroids) {
 
 	return cps;
 
-};pc.shadows = function() {
+}
+
+pc.shadows = function() {
 	flags.shadows = true;
 	pc.alphaOnBrushed(0.1);
 	pc.render();
@@ -622,7 +625,7 @@ function single_curve(d, ctx) {
 		}
 		ctx.bezierCurveTo(cps[i].e(1), cps[i].e(2), cps[i+1].e(1), cps[i+1].e(2), cps[i+2].e(1), cps[i+2].e(2));
 	}
-};
+}
 
 // draw single polyline
 function color_path(d, ctx) {
@@ -633,7 +636,7 @@ function color_path(d, ctx) {
 		single_path(d, ctx);
 	}
 	ctx.stroke();
-};
+}
 
 // draw many polylines of the same color
 function paths(data, ctx) {
@@ -647,7 +650,7 @@ function paths(data, ctx) {
 		}
 	});
 	ctx.stroke();
-};
+}
 
 // returns the y-position just beyond the separating null value line
 function getNullPosition() {
@@ -659,7 +662,7 @@ function getNullPosition() {
 		console.log("A value is NULL, but nullValueSeparator is not set; set it to 'bottom' or 'top'.");
 	}
 	return h()+1;
-};
+}
 
 function single_path(d, ctx) {
 	d3.entries(__.dimensions).forEach(function(p, i) {  //p isn't really p
@@ -669,7 +672,7 @@ function single_path(d, ctx) {
 			ctx.lineTo(position(p.key), typeof d[p.key] =='undefined' ? getNullPosition() : __.dimensions[p.key].yscale(d[p.key]));
 		}
 	});
-};
+}
 
 function path_brushed(d, i) {
   if (__.brushedColor !== null) {
@@ -678,17 +681,18 @@ function path_brushed(d, i) {
     ctx.brushed.strokeStyle = d3.functor(__.color)(d, i);
   }
   return color_path(d, ctx.brushed)
-};
+}
 
 function path_foreground(d, i) {
   ctx.foreground.strokeStyle = d3.functor(__.color)(d, i);
 	return color_path(d, ctx.foreground);
-};
+}
 
 function path_highlight(d, i) {
   ctx.highlight.strokeStyle = d3.functor(__.color)(d, i);
 	return color_path(d, ctx.highlight);
-};
+}
+
 pc.clear = function(layer) {
   ctx[layer].clearRect(0, 0, w() + 2, h() + 2);
 
@@ -713,20 +717,21 @@ function flipAxisAndUpdatePCP(dimension) {
   d3.select(this.parentElement)
     .transition()
       .duration(__.animationTime)
-      .call(axis.scale(__.dimensions[dimension].yscale))
-      .call(axis.orient(__.dimensions[dimension].orient))
-      .call(axis.ticks(__.dimensions[dimension].ticks))
-      .call(axis.innerTickSize(__.dimensions[dimension].innerTickSize))
-      .call(axis.outerTickSize(__.dimensions[dimension].outerTickSize))
-      .call(axis.tickPadding(__.dimensions[dimension].tickPadding))
-      .call(axis.tickFormat(__.dimensions[dimension].tickFormat));
+      //.call(axis.scale(__.dimensions[dimension].yscale))
+      //.call(axis.orient(__.dimensions[dimension].orient))
+      //.call(axis.ticks(__.dimensions[dimension].ticks))
+      //.call(axis.innerTickSize(__.dimensions[dimension].innerTickSize))
+      //.call(axis.outerTickSize(__.dimensions[dimension].outerTickSize))
+      //.call(axis.tickPadding(__.dimensions[dimension].tickPadding))
+      //.call(axis.tickFormat(__.dimensions[dimension].tickFormat))
+      .call(pc.applyAxisConfig(axis, __.dimensions[dimension]));
 
   pc.render();
 }
 
 function rotateLabels() {
   if (!__.rotateLabels) return;
-  
+
   var delta = d3.event.deltaY;
   delta = delta < 0 ? -5 : delta;
   delta = delta > 0 ? 5 : delta;
@@ -775,14 +780,14 @@ pc.createAxes = function() {
     .append("svg:text")
       .attr({
         "text-anchor": "middle",
-        "y": 0,
+        "y": __.axisLabelOffset.y,
         "transform": "translate(0,-5) rotate(" + __.dimensionTitleRotation + ")",
-        "x": 0,
+        "x": __.axisLabelOffset.x,
         "class": "label"
       })
-      .text(dimensionLabels)
-      .on("dblclick", flipAxisAndUpdatePCP)
-      .on("wheel", rotateLabels);
+      .text(dimensionLabels);
+      //.on("dblclick", flipAxisAndUpdatePCP)
+      //.on("wheel", rotateLabels);
 
   if (__.nullValueSeparator=="top") {
     pc.svg.append("line")
@@ -992,7 +997,7 @@ pc.reorder = function(rowdata) {
       pc.highlight(highlighted);
     }
   }
-}
+};
 
 pc.sortDimensionsByRowData = function(rowdata) {
   var copy = __.dimensions;
@@ -1012,7 +1017,7 @@ pc.sortDimensionsByRowData = function(rowdata) {
     __.dimensions[p] = copy[p];
     __.dimensions[p].index = i;
   });
-}
+};
 
 pc.sortDimensions = function() {
   var copy = __.dimensions;
@@ -1031,7 +1036,7 @@ pc.adjacent_pairs = function(arr) {
   var ret = [];
   for (var i = 0; i < arr.length-1; i++) {
     ret.push([arr[i],arr[i+1]]);
-  };
+  }
   return ret;
 };
 
@@ -1354,7 +1359,7 @@ pc.brushMode = function(mode) {
       .attr("stroke-width", 2);
 
     drag
-      .on("drag", function(d, i) { 
+      .on("drag", function(d, i) {
         var ev = d3.event;
         i = i + 1;
         strum["p" + i][0] = Math.min(Math.max(strum.minX + 1, ev.x), strum.maxX);
