@@ -23,9 +23,13 @@ d3.parcoords = function(config) {
     showControlPoints: false,
     hideAxis : [],
     flipAxes: [],
-    animationTime: 1100, // How long it takes to flip the axis when you double click
+    animationTime: 500, // How long it takes to flip the axis when you double click
     rotateLabels: false,
-    axisLabelOffset: {x: 0, y: 0}
+    axisLabelOffset: {x: 0, y: 0},
+    wrapLabelWidth: null,
+    lineWidth: 1,
+    highlightedLineWidth: 1.2,
+    axisFontSize: "14px"
   };
 
   extend(__, config);
@@ -61,7 +65,7 @@ var pc = function(selection) {
     .append("svg")
       .attr("width", __.width)
       .attr("height", __.height)
-      .style("font", "14px sans-serif")
+      .style("font", __.axisFontSize + " sans-serif")
       .style("position", "absolute")
 
     .append("svg:g")
@@ -279,16 +283,16 @@ pc.autoscale = function() {
 
   // default styles, needs to be set when canvas width changes
   ctx.foreground.strokeStyle = __.color;
-  ctx.foreground.lineWidth = 1;
+  ctx.foreground.lineWidth = __.lineWidth;
   ctx.foreground.globalCompositeOperation = __.composite;
   ctx.foreground.globalAlpha = __.alpha;
   ctx.foreground.scale(devicePixelRatio, devicePixelRatio);
   ctx.brushed.strokeStyle = __.brushedColor;
-  ctx.brushed.lineWidth = 1;
+  ctx.brushed.lineWidth = __.lineWidth;
   ctx.brushed.globalCompositeOperation = __.composite;
   ctx.brushed.globalAlpha = __.alpha;
   ctx.brushed.scale(devicePixelRatio, devicePixelRatio);
-  ctx.highlight.lineWidth = 1.5;
+  ctx.highlight.lineWidth = __.highlightedLineWidth;
   ctx.highlight.scale(devicePixelRatio, devicePixelRatio);
 
   return this;
@@ -746,6 +750,33 @@ function dimensionLabels(d) {
   return __.dimensions[d].title ? __.dimensions[d].title : d;  // dimension display names
 }
 
+function wrapSvgText(text, width) {
+  if (width == null) return;
+  text.each(function () {
+    var text = d3.select(this),
+      words = text.text().replace("/", " ").split(/\s+/).reverse(),
+      word,
+      line = [],
+      lineNumber = 0,
+      lineHeight = 1.1, // ems
+      y = text.attr("y"),
+      dy = parseFloat(text.attr("dy") === null ? 0 : text.attr("dy")),
+      tspan = text.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em"),
+      words_length = words.length;
+    while (word = words.pop()) {
+      line.push(word);
+      tspan.text(line.join(" "));
+      // IMPORTANT: in order for getComputedTextLength() to work, its parent containers need to be not hidden
+      if (tspan.node().getComputedTextLength() > width && words_length > 1) {
+        line.pop();
+        tspan.text(line.join(" "));
+        line = [word];
+        tspan = text.append("tspan").attr("x", 0).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
+      }
+    }
+  });
+}
+
 pc.createAxes = function() {
   if (g) pc.removeAxes();
 
@@ -785,7 +816,8 @@ pc.createAxes = function() {
         "x": __.axisLabelOffset.x,
         "class": "label"
       })
-      .text(dimensionLabels);
+      .text(dimensionLabels)
+      .call(wrapSvgText, __.wrapLabelWidth);
       //.on("dblclick", flipAxisAndUpdatePCP)
       //.on("wheel", rotateLabels);
 
@@ -858,8 +890,9 @@ pc.updateAxes = function(animationTime) {
         "class": "label"
       })
       .text(dimensionLabels)
-      .on("dblclick", flipAxisAndUpdatePCP)
-      .on("wheel", rotateLabels);
+      .call(wrapSvgText, __.wrapLabelWidth);
+      //.on("dblclick", flipAxisAndUpdatePCP)
+      //.on("wheel", rotateLabels);
 
   // Update
   g_data.attr("opacity", 0);
@@ -868,11 +901,16 @@ pc.updateAxes = function(animationTime) {
       .duration(animationTime)
       .each(function(d) { d3.select(this).call( pc.applyAxisConfig(axis, __.dimensions[d]) )
       });
-  g_data.select(".label")
+  // BUG: The following commented code causes problems for wrapping text,
+  // probably because when wrapSvgText is called, the text is not rendered yet
+  /*g_data.select(".label")
     .transition()
       .duration(animationTime)
       .text(dimensionLabels)
-      .attr("transform", "translate(0,-5) rotate(" + __.dimensionTitleRotation + ")");
+      .attr("transform", "translate(0,-5) rotate(" + __.dimensionTitleRotation + ")")
+      .each("end", function(d) {
+        wrapSvgText(d3.select(this), __.wrapLabelWidth);
+      });*/
 
   // Exit
   g_data.exit().remove();
@@ -2383,6 +2421,7 @@ pc.resize = function() {
 
 // highlight an array of data
 pc.highlight = function(data) {
+  if (typeof data === "undefined") return;
   if (arguments.length === 0) {
     return __.highlighted;
   }
